@@ -17,6 +17,7 @@ def generate_launch_description():
         output = 'screen',
         parameters = [
             {'serial_port_name': '/dev/ttyUSB0'},
+            {'serial_baudrate': 921600},
             {'frame_id': 'laser'},
             {'pub_topicname_lidar': 'scan'},
         ],

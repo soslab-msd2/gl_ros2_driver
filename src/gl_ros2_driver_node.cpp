@@ -41,6 +41,7 @@ class GlRos2DriverNode : public rclcpp::Node
     private:
         /************************** Launch variables *****************************/
         std::string serial_port_name = "/dev/ttyUSB0";
+        int serial_baudrate = 921600;
         std::string frame_id = "laser";
         std::string pub_topicname_lidar = "scan";
         
@@ -62,6 +63,7 @@ void GlRos2DriverNode::TimerCallback(void)
 void GlRos2DriverNode::DeclareParam(void)
 {
     this->declare_parameter("serial_port_name", serial_port_name);
+    this->declare_parameter("serial_baudrate", serial_baudrate);
     this->declare_parameter("frame_id", frame_id);
     this->declare_parameter("pub_topicname_lidar", pub_topicname_lidar);
 }
@@ -69,13 +71,14 @@ void GlRos2DriverNode::DeclareParam(void)
 void GlRos2DriverNode::GetParam(void)
 {
     serial_port_name = this->get_parameter("serial_port_name").as_string();
+    serial_baudrate = this->get_parameter("serial_baudrate").as_int();
     frame_id = this->get_parameter("frame_id").as_string();
     pub_topicname_lidar = this->get_parameter("pub_topicname_lidar").as_string();
 }
 
 void GlRos2DriverNode::InitGl(void)
 {
-    gl.OpenSerial(serial_port_name,921600);
+    gl.OpenSerial(serial_port_name,serial_baudrate);
     gl.SetFrameDataEnable(false);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     std::cout << "Serial Num : " << gl.GetSerialNum() << std::endl;
@@ -90,18 +93,16 @@ void GlRos2DriverNode::PubLidar(Gl::framedata_t frame_data)
     {
         sensor_msgs::msg::LaserScan scan_msg;
         scan_msg.header.stamp = rclcpp::Clock().now();
-
         scan_msg.header.frame_id = frame_id;
-        scan_msg.angle_max = frame_data.angle[0];
-        scan_msg.angle_min = frame_data.angle[num_lidar_data-1];
+        scan_msg.angle_min = frame_data.angle[0];
+        scan_msg.angle_max = frame_data.angle[num_lidar_data-1];
         scan_msg.angle_increment = (scan_msg.angle_max - scan_msg.angle_min) / (double)(num_lidar_data-1);
-        scan_msg.time_increment = scan_msg.scan_time / (double)(num_lidar_data-1);
         scan_msg.range_min = 0.1;
         scan_msg.range_max = 30.0;
         scan_msg.ranges.resize(num_lidar_data);
         for(size_t i=0; i<num_lidar_data; i++)
         {
-            scan_msg.ranges[i] = (double)frame_data.distance[i];
+            scan_msg.ranges[i] = frame_data.distance[i];
         }
         laser_pub->publish(scan_msg);
     }
