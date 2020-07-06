@@ -39,8 +39,6 @@ ament_target_dependencies(${PROJECT_NAME}_node
     rclcpp
     std_msgs
     sensor_msgs
-    gl_driver
-    serial
 )
 
 install(
