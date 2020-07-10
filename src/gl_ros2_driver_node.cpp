@@ -48,7 +48,7 @@ class GlRos2DriverNode : public rclcpp::Node
 
     private:
         /************************** Other variables *****************************/
-        Gl gl = Gl();
+        Gl gl;
         
         rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_pub;
         rclcpp::TimerBase::SharedPtr timer;
@@ -79,8 +79,6 @@ void GlRos2DriverNode::GetParam(void)
 void GlRos2DriverNode::InitGl(void)
 {
     gl.OpenSerial(serial_port_name,serial_baudrate);
-    gl.SetFrameDataEnable(false);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     std::cout << "Serial Num : " << gl.GetSerialNum() << std::endl;
     gl.SetFrameDataEnable(true);
 }
