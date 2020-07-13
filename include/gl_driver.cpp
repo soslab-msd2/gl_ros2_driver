@@ -387,6 +387,8 @@ Gl::framedata_t Gl::ReadFrameData(void)
         frame_data = ParsingFrameData(lidar_data);
     }
 
+    lidar_data.clear();
+
     return frame_data;
 }
 
