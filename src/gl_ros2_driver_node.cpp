@@ -98,9 +98,12 @@ void GlRos2DriverNode::PubLidar(Gl::framedata_t frame_data)
         scan_msg.range_min = 0.1;
         scan_msg.range_max = 30.0;
         scan_msg.ranges.resize(num_lidar_data);
+	scan_msg.intensities.resize(num_lidar_data);
+
         for(size_t i=0; i<num_lidar_data; i++)
         {
             scan_msg.ranges[i] = frame_data.distance[i];
+            scan_msg.intensities[i] = frame_data.pulse_width[i];
         }
         laser_pub->publish(scan_msg);
     }
