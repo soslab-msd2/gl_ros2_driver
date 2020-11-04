@@ -19,6 +19,7 @@ def generate_launch_description():
             {'serial_port_name': '/dev/ttyUSB0'},
             {'serial_baudrate': 921600},
             {'frame_id': 'laser'},
+            {'parent_frame_id': 'odom'},
             {'pub_topicname_lidar': 'scan'},
         ],
     )
