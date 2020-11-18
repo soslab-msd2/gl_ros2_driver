@@ -17,7 +17,7 @@ class GlRos2DriverNode : public rclcpp::Node
             GetParam();
             
             laser_pub = this->create_publisher<sensor_msgs::msg::LaserScan>(pub_topicname_lidar, 10);
-            timer = this->create_wall_timer(25ms, std::bind(&GlRos2DriverNode::TimerCallback, this));
+            timer = this->create_wall_timer(12ms, std::bind(&GlRos2DriverNode::TimerCallback, this));
 
             InitGl();
         }
@@ -98,7 +98,7 @@ void GlRos2DriverNode::PubLidar(Gl::framedata_t frame_data)
         scan_msg.range_min = 0.1;
         scan_msg.range_max = 30.0;
         scan_msg.ranges.resize(num_lidar_data);
-	scan_msg.intensities.resize(num_lidar_data);
+	    scan_msg.intensities.resize(num_lidar_data);
 
         for(size_t i=0; i<num_lidar_data; i++)
         {

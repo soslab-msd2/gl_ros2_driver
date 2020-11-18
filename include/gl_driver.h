@@ -34,7 +34,7 @@ public:
 	void OpenSerial(std::string &port, uint32_t baudrate);
 
 	std::string GetSerialNum(void);
-	framedata_t ReadFrameData(void);
+	framedata_t ReadFrameData(bool filter_on=true);
 	void SetFrameDataEnable(uint8_t framedata_enable);
 
 private:

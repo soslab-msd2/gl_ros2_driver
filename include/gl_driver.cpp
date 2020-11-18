@@ -378,13 +378,25 @@ Gl::framedata_t ParsingFrameData(std::vector<uint8_t> data)
     return frame_data;
 }
 
-Gl::framedata_t Gl::ReadFrameData(void)
+Gl::framedata_t Gl::ReadFrameData(bool filter_on)
 {
     Gl::framedata_t frame_data;
 
     if(lidar_data.size()>0)
     {
         frame_data = ParsingFrameData(lidar_data);
+        if(filter_on==true)
+        {
+            for(int i=0; i<frame_data.distance.size()-1; i++)
+            {
+                if(frame_data.distance[i]>0.0 && frame_data.distance[i+1]>0.0)
+                {
+                    double diff = (frame_data.distance[i]-frame_data.distance[i+1])/2.0;
+                    if(diff>0.01*frame_data.distance[i]) frame_data.distance[i] = 0.0;
+                    if(diff<-0.01*frame_data.distance[i]) frame_data.distance[i] = 0.0;
+                }
+            }
+        }
     }
 
     lidar_data.clear();
