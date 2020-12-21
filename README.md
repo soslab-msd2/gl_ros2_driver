@@ -19,7 +19,7 @@ $ sudo usermod -a -G dialout $USER
 and reboot.
 - Run GL-3 publisher node
 ```
-$ ros2 launch gl_ros2_driver gl_ros2_driver.launch
+$ ros2 launch gl_ros2_driver gl_ros2_driver.py
 ```
 - Run GL-3 publisher node with RViz
 ```
