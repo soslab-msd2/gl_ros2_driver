@@ -1,9 +1,4 @@
 # GL-3 (Mechanical scanning 2D LiDAR)
-<p align="center">
-<img src="http://soslab.co/wp-content/uploads/2020/01/CES-%ED%99%88%ED%8E%98%EC%9D%B4%EC%A7%80-%EC%9D%B4%EB%AF%B8%EC%A7%80-07-1.png" width="300">
-<img src="http://soslab.co/wp-content/uploads/2020/01/CES-%ED%99%88%ED%8E%98%EC%9D%B4%EC%A7%80-%EC%9D%B4%EB%AF%B8%EC%A7%80-32-2.png" width="500">
-<img src="http://soslab.co/wp-content/uploads/2020/01/CES-%ED%99%88%ED%8E%98%EC%9D%B4%EC%A7%80-%EC%9D%B4%EB%AF%B8%EC%A7%80-20-3.png" width="800">
-</p>
 
 ## Guide
 * Installation
@@ -13,28 +8,19 @@ $ git clone https://github.com/soslab-project/gl_ros2_driver.git
 $ cd $(ROS2 workspace)
 $ colcon build --symlink-install
 ```
-- Set permission of USB port
-```
-$ sudo chmod a+rw /dev/ttyUSB0
-```
-- Set permission of USB port permanently
-```
-$ sudo usermod -a -G dialout $USER
-```
-and reboot.
+- Set local IP as `10.110.1.3`
 - Run GL-3 publisher node with RViz
 ```
 $ ros2 launch gl_ros2_driver view_gl_ros2_driver.py
 ```
-- Change serial port or frame id in `gl_ros2_driver/launch/view_gl_ros2_driver.py`
+- Change setting parameters in `gl_ros2_driver/launch/gl_ros2_driver.py`
 
 ## Published Topics
 - _scan_ (sensor_msgs/LaserScan): it publishes scan topic from the laser.
 
 ## Test environment
-- ROS Melodic Morenia
-- Ubuntu 18.04
-- x86_64 (PC), aarch64 (Jetson series)
+- ROS2 Dashing Diademata
+- Ubuntu 18.04 LTS
 
 ## Application demo
 - [GL-3, Demo] 2D LiDAR, Mapping (https://youtu.be/AfsqlU_f-Go)

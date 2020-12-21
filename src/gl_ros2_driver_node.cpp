@@ -24,7 +24,7 @@ class GlRos2DriverNode : public rclcpp::Node
 
         ~GlRos2DriverNode()
         {
-            gl.SetFrameDataEnable(false);
+            gl->SetFrameDataEnable(false);
         }
 
 
@@ -35,7 +35,7 @@ class GlRos2DriverNode : public rclcpp::Node
         void GetParam(void);
 
         void InitGl(void);
-        void PubLidar(Gl::framedata_t frame_data);
+        void PubLidar(const Gl::framedata_t& frame_data);
 
 
     private:
@@ -48,7 +48,7 @@ class GlRos2DriverNode : public rclcpp::Node
 
     private:
         /************************** Other variables *****************************/
-        Gl gl;
+        Gl* gl;
         
         rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_pub;
         rclcpp::TimerBase::SharedPtr timer;
@@ -56,7 +56,8 @@ class GlRos2DriverNode : public rclcpp::Node
 
 void GlRos2DriverNode::TimerCallback(void)
 {
-    Gl::framedata_t frame_data = gl.ReadFrameData();
+    Gl::framedata_t frame_data;
+    gl->ReadFrameData(frame_data);
     if(frame_data.distance.size()>0) PubLidar(frame_data);
 }
 
@@ -78,12 +79,12 @@ void GlRos2DriverNode::GetParam(void)
 
 void GlRos2DriverNode::InitGl(void)
 {
-    gl.OpenSerial(serial_port_name,serial_baudrate);
-    std::cout << "Serial Num : " << gl.GetSerialNum() << std::endl;
-    gl.SetFrameDataEnable(true);
+    gl = new Gl(serial_port_name, serial_baudrate);
+    std::cout << "Serial Num : " << gl->GetSerialNum() << std::endl;
+    gl->SetFrameDataEnable(true);
 }
 
-void GlRos2DriverNode::PubLidar(Gl::framedata_t frame_data) 
+void GlRos2DriverNode::PubLidar(const Gl::framedata_t& frame_data) 
 {
     int num_lidar_data = frame_data.distance.size();
     
