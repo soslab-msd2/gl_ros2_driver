@@ -8,7 +8,19 @@ $ git clone https://github.com/soslab-project/gl_ros2_driver.git
 $ cd $(ROS2 workspace)
 $ colcon build --symlink-install
 ```
-- Set local IP as `10.110.1.3`
+- Set permission of USB port
+```
+$ sudo chmod a+rw /dev/ttyUSB0
+```
+- Set permission of USB port permanently
+```
+$ sudo usermod -a -G dialout $USER
+```
+and reboot.
+- Run GL-3 publisher node
+```
+$ ros2 launch gl_ros2_driver gl_ros2_driver.launch
+```
 - Run GL-3 publisher node with RViz
 ```
 $ ros2 launch gl_ros2_driver view_gl_ros2_driver.py
