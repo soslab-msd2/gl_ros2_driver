@@ -16,6 +16,7 @@ def generate_launch_description():
             {'serial_baudrate': 921600},
             {'frame_id': 'laser'},
             {'pub_topicname_lidar': 'scan'},
+            {'angle_offset': 0.0},
         ],
     )
 

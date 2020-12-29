@@ -16,8 +16,8 @@ class GlRos2DriverNode : public rclcpp::Node
             DeclareParam();
             GetParam();
             
-            laser_pub = this->create_publisher<sensor_msgs::msg::LaserScan>(pub_topicname_lidar, 10);
-            timer = this->create_wall_timer(12ms, std::bind(&GlRos2DriverNode::TimerCallback, this));
+            laser_pub = create_publisher<sensor_msgs::msg::LaserScan>(pub_topicname_lidar, 10);
+            timer = create_wall_timer(12ms, std::bind(&GlRos2DriverNode::TimerCallback, this));
 
             InitGl();
         }
@@ -44,6 +44,7 @@ class GlRos2DriverNode : public rclcpp::Node
         int serial_baudrate = 921600;
         std::string frame_id = "laser";
         std::string pub_topicname_lidar = "scan";
+        double angle_offset = 0.0;
         
 
     private:
@@ -63,18 +64,20 @@ void GlRos2DriverNode::TimerCallback(void)
 
 void GlRos2DriverNode::DeclareParam(void)
 {
-    this->declare_parameter("serial_port_name", serial_port_name);
-    this->declare_parameter("serial_baudrate", serial_baudrate);
-    this->declare_parameter("frame_id", frame_id);
-    this->declare_parameter("pub_topicname_lidar", pub_topicname_lidar);
+    declare_parameter("serial_port_name", serial_port_name);
+    declare_parameter("serial_baudrate", serial_baudrate);
+    declare_parameter("frame_id", frame_id);
+    declare_parameter("pub_topicname_lidar", pub_topicname_lidar);
+    declare_parameter("angle_offset", angle_offset);
 }
 
 void GlRos2DriverNode::GetParam(void)
 {
-    serial_port_name = this->get_parameter("serial_port_name").as_string();
-    serial_baudrate = this->get_parameter("serial_baudrate").as_int();
-    frame_id = this->get_parameter("frame_id").as_string();
-    pub_topicname_lidar = this->get_parameter("pub_topicname_lidar").as_string();
+    serial_port_name = get_parameter("serial_port_name").as_string();
+    serial_baudrate = get_parameter("serial_baudrate").as_int();
+    frame_id = get_parameter("frame_id").as_string();
+    pub_topicname_lidar = get_parameter("pub_topicname_lidar").as_string();
+    angle_offset = get_parameter("angle_offset").as_double();
 }
 
 void GlRos2DriverNode::InitGl(void)
@@ -93,8 +96,8 @@ void GlRos2DriverNode::PubLidar(const Gl::framedata_t& frame_data)
         sensor_msgs::msg::LaserScan scan_msg;
         scan_msg.header.stamp = rclcpp::Clock().now();
         scan_msg.header.frame_id = frame_id;
-        scan_msg.angle_min = frame_data.angle[0];
-        scan_msg.angle_max = frame_data.angle[num_lidar_data-1];
+        scan_msg.angle_min = frame_data.angle[0] + angle_offset;
+        scan_msg.angle_max = frame_data.angle[num_lidar_data-1] + angle_offset;
         scan_msg.angle_increment = (scan_msg.angle_max - scan_msg.angle_min) / (double)(num_lidar_data-1);
         scan_msg.range_min = 0.1;
         scan_msg.range_max = 30.0;
