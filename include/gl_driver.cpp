@@ -1,11 +1,6 @@
 
 #include "gl_driver.h"
 
-#include <fcntl.h>
-#include <asm/ioctls.h>
-#include <asm/termbits.h>
-#include <sys/ioctl.h>
-
 
 #define PS1             0xC3
 #define PS2             0x51
@@ -15,8 +10,8 @@
 #define SM_GET          1
 #define SM_STREAM       2
 #define SM_ERROR        255
-#define BI_PC2GL310     0x21
-#define BI_GL3102PC     0x12
+#define BI_PC2GL        0x21
+#define BI_GL2PC        0x12
 #define PE              0xC2
 
 #define STATE_INIT      0
@@ -24,8 +19,8 @@
 #define STATE_PS2       2
 #define STATE_PS3       3
 #define STATE_PS4       4
-#define STATE_preDATA   5
-#define STATE_PE        6
+#define STATE_TL        5
+#define STATE_PAYLOAD   6
 #define STATE_CS        7
 
 #define COMM_SERIAL     1
@@ -35,20 +30,20 @@
 int recv_state = STATE_INIT;
 
 uint8_t comm_type;
-serial::Serial* serial_port_;
-int sockfd_;
-struct sockaddr_in servaddr_, clientaddr_; 
+serial::Serial* serial_port;
+int sockfd;
+struct sockaddr_in gl_addr, pc_addr;
 
-uint8_t read_cs_;
-uint8_t write_cs_;
+uint8_t read_cs;
+uint8_t write_cs;
 
 std::vector<uint8_t> send_packet;
 std::vector<uint8_t> recv_packet;
-std::vector<uint8_t> recv_data;
 
 
 std::vector<uint8_t> serial_num;
-std::vector<uint8_t> lidar_data;
+
+std::vector<std::vector<uint8_t>> lidar_data;
 Gl::framedata_t frame_data_in;
 
 
@@ -56,30 +51,28 @@ Gl::framedata_t frame_data_in;
 // Constructor and Deconstructor for GL Class
 //////////////////////////////////////////////////////////////
 
-Gl::Gl(std::string& gl_ip, int gl_port, int pc_port)
+Gl::Gl(std::string& gl_udp_ip, int gl_udp_port, int pc_udp_port)
 {
     comm_type = COMM_UDP;
 
-    // server setting
-    if ( (sockfd_=socket(AF_INET, SOCK_DGRAM, 0)) == -1 ) 
+    if ( (sockfd=socket(AF_INET, SOCK_DGRAM, 0)) == -1 ) 
     { 
 		perror("[ERROR] Socket creation failed"); 
 		exit(EXIT_FAILURE); 
 	} 
 
-    // Filling server information 
-	memset(&servaddr_, 0, sizeof(servaddr_)); 
-	servaddr_.sin_family = AF_INET; 
-	servaddr_.sin_port = htons(gl_port); 
-    const char * c = gl_ip.c_str();
-	servaddr_.sin_addr.s_addr = inet_addr(c);
+	memset(&gl_addr, 0, sizeof(gl_addr)); 
+	gl_addr.sin_family = AF_INET; 
+	gl_addr.sin_port = htons(gl_udp_port); 
+    const char * c = gl_udp_ip.c_str();
+	gl_addr.sin_addr.s_addr = inet_addr(c);
 
-    memset(&clientaddr_, 0, sizeof(clientaddr_)); 
-	clientaddr_.sin_family = AF_INET; 
-	clientaddr_.sin_port = htons(pc_port); 
-    clientaddr_.sin_addr.s_addr = htonl( INADDR_ANY );
+    memset(&pc_addr, 0, sizeof(pc_addr)); 
+	pc_addr.sin_family = AF_INET; 
+	pc_addr.sin_port = htons(pc_udp_port); 
+    pc_addr.sin_addr.s_addr = htonl( INADDR_ANY );
 
-    if ( bind(sockfd_,(struct sockaddr *)&clientaddr_,sizeof(clientaddr_)) == -1 ) 
+    if ( bind(sockfd,(struct sockaddr *)&pc_addr,sizeof(pc_addr)) == -1 ) 
     { 
 		perror("[ERROR] Bind failed"); 
 		exit(EXIT_FAILURE); 
@@ -87,7 +80,7 @@ Gl::Gl(std::string& gl_ip, int gl_port, int pc_port)
     
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    std::cout << "Socket START [" << sockfd_ << "]" << std::endl;
+    std::cout << "Socket START [" << sockfd << "]" << std::endl;
 
     th = std::thread(&Gl::ThreadCallBack,this);
 }
@@ -97,18 +90,9 @@ Gl::Gl(std::string& gl_serial_name, uint32_t gl_serial_baudrate)
 {
     comm_type = COMM_SERIAL;
 
-    serial_port_ = new serial::Serial(gl_serial_name, gl_serial_baudrate, serial::Timeout::simpleTimeout(1));
-    if(serial_port_->isOpen()) std::cout << "GL Serial is opened." << std::endl;
-
-    int fd = open(gl_serial_name.c_str(), O_RDONLY);
-    struct termios2 tio;
-    ioctl(fd, TCGETS2, &tio);
-    tio.c_cflag &= ~CBAUD;
-    tio.c_cflag |= BOTHER;
-    tio.c_ispeed = gl_serial_baudrate;
-    tio.c_ospeed = gl_serial_baudrate;
-    ioctl(fd, TCSETS2, &tio);
-    close(fd);
+    serial_port = new serial::Serial(gl_serial_name, gl_serial_baudrate, serial::Timeout::simpleTimeout(100));
+    if(serial_port->isOpen()) std::cout << "GL Serial is opened." << std::endl;
+    else std::cout << "[ERROR] GL Serial is not opened." << std::endl;
 
     th = std::thread(&Gl::ThreadCallBack,this);
 }
@@ -117,15 +101,18 @@ Gl::Gl(std::string& gl_serial_name, uint32_t gl_serial_baudrate)
 Gl::~Gl()
 {
     SetFrameDataEnable(false);
+    thread_running = false;
 
     if(comm_type==COMM_SERIAL)
     {
-        serial_port_->close();
-        delete serial_port_;
+        serial_port->close();
+        delete serial_port;
     }
-    else if(comm_type==COMM_UDP) close(sockfd_); 
+    else if(comm_type==COMM_UDP)
+    {
+        close(sockfd); 
+    }
 
-    thread_running = false;
     std::cout << "Socket END" << std::endl;
 }
 
@@ -134,34 +121,17 @@ Gl::~Gl()
 // Functions for Comm
 //////////////////////////////////////////////////////////////
 
-void read_cs_update(uint8_t data)
-{
-    read_cs_ = read_cs_^ (data&0xff);
-}
+void read_cs_update(uint8_t data) { read_cs = read_cs^ (data&0xff); }
+uint8_t read_cs_get() { return read_cs&0xff; }
+void read_cs_clear() { read_cs = 0; }
 
-uint8_t read_cs_get()
-{
-    return read_cs_&0xff;
-}
+void write_cs_update(uint8_t data) { write_cs = write_cs^ (data&0xff); }
+uint8_t write_cs_get() { return write_cs&0xff; }
+void write_cs_clear() { write_cs = 0; }
 
-void read_cs_clear()
+void SendPacket(std::vector<uint8_t>& send_packet)
 {
-    read_cs_ = 0;
-}
-
-void write_cs_update(uint8_t data)
-{
-    write_cs_ = write_cs_^ (data&0xff);
-}
-
-uint8_t write_cs_get()
-{
-    return write_cs_&0xff;
-}
-
-void write_cs_clear()
-{
-    write_cs_ = 0;
+    for(auto& i: send_packet) serial_port->write(&i, 1);
 }
 
 void write(uint8_t data)
@@ -177,14 +147,8 @@ void write_PS()
     for(auto& i: PS) write(i);
 }
 
-void SendPacket(std::vector<uint8_t>& send_packet)
+void WritePacket(uint8_t PI, uint8_t PL, uint8_t SM, uint8_t CAT0, uint8_t CAT1, const std::vector<uint8_t>& DTn)
 {
-    for(auto& i: send_packet) serial_port_->write(&i, 1);
-}
-
-void write_packet(uint8_t PI, uint8_t PL, uint8_t SM, uint8_t CAT0, uint8_t CAT1, const std::vector<uint8_t>& DTn)
-{
-    if(comm_type==COMM_SERIAL) serial_port_->flush();
     send_packet.clear();
     write_cs_clear();
 
@@ -199,233 +163,250 @@ void write_packet(uint8_t PI, uint8_t PL, uint8_t SM, uint8_t CAT0, uint8_t CAT1
     write(PI);
     write(PL);
     write(SM);
-    write(BI_PC2GL310);
+    write(BI_PC2GL);
     write(CAT0);
     write(CAT1);
 
     for(auto i: DTn) write(i);
 
     write(PE);
-
     write(write_cs_get());
 
     if(comm_type==COMM_SERIAL) SendPacket(send_packet);
-    else if(comm_type==COMM_UDP) sendto(sockfd_, &send_packet[0], send_packet.size(), MSG_CONFIRM, (const struct sockaddr *) &servaddr_, sizeof(servaddr_));
+    else if(comm_type==COMM_UDP) sendto(sockfd, &send_packet[0], send_packet.size(), MSG_CONFIRM, (const struct sockaddr *) &gl_addr, sizeof(gl_addr));
 }
 
 
-void recv_packet_clear(void)
+void RecvPacketClear(void)
 {
     read_cs_clear();
     recv_state = STATE_INIT;
     recv_packet.clear();
-    recv_data.clear();
 }
 
-
-int check_PS(uint8_t data)
+void FrameData(const std::vector<uint8_t>& recv_data, uint8_t PI, uint8_t PL, uint8_t SM)
 {
-    if(recv_state==STATE_INIT)
+    if(SM!=SM_STREAM || recv_data.size()==0) return;
+
+    if(PI==0)
     {
-        if(data==PS1)
-        {
-            recv_packet_clear();
-            read_cs_update(data);
-            recv_state = STATE_PS1;
-        }
+        lidar_data.clear();
+        lidar_data.push_back(recv_data);
     }
-    else if(recv_state==STATE_PS1)
+    else if(PI==lidar_data.size())
     {
-        if(data==PS2)
-        {
-            read_cs_update(data);
-            recv_state = STATE_PS2;
-        }
-        else return 0;
+        lidar_data.push_back(recv_data);
     }
-    else if(recv_state==STATE_PS2)
+    else
     {
-        if(data==PS3)
-        {
-            read_cs_update(data);
-            recv_state = STATE_PS3;
-        }
-        else return 0;
+        lidar_data.clear();
+        return;
     }
-    else if(recv_state==STATE_PS3)
+    
+    if(lidar_data.size()==PL)
     {
-        if(data==PS4)
+        if(lidar_data[0].size()<3)
         {
-            read_cs_update(data);
-            recv_state = STATE_PS4;
+            lidar_data.clear();
+            return;
         }
-        else return 0;
-    }
-    else return 2;
 
-    return 1;
-}
+        std::vector<uint8_t> data;
+        for(int i=0; i<lidar_data.size(); i++) std::copy(lidar_data[i].begin(), lidar_data[i].end(), std::back_inserter(data));
 
-void ParsingFrameData(Gl::framedata_t& frame_data, std::vector<uint8_t>& data)
-{
-    if(data.size()==0) return;
+        uint16_t frame_data_size = data[0]&0xff;
+        frame_data_size |= ((uint16_t)(data[1]&0xff))<<8;
 
-    uint16_t frame_data_size = data[0]&0xff;
-    frame_data_size |= ((uint16_t)(data[1]&0xff))<<8;
+        if(data.size()!=(frame_data_size*4+22))
+        {
+            lidar_data.clear();
+            return;
+        } 
 
-    if(data.size()!=(frame_data_size*4+22)) return;
+        Gl::framedata_t frame_data;
+        frame_data.distance.resize(frame_data_size);
+        frame_data.pulse_width.resize(frame_data_size);
+        frame_data.angle.resize(frame_data_size);
+        for(size_t i=0; i<frame_data_size; i++)
+        {
+            uint16_t distance = data[i*4+2]&0xff;
+            distance |= ((uint16_t)(data[i*4+3]&0xff))<<8;
 
-    frame_data.distance.resize(frame_data_size);
-    frame_data.pulse_width.resize(frame_data_size);
-    frame_data.angle.resize(frame_data_size);
-    for(size_t i=0; i<frame_data_size; i++)
-    {
-        uint16_t distance = data[i*4+2]&0xff;
-        distance |= ((uint16_t)(data[i*4+3]&0xff))<<8;
+            uint16_t pulse_width = data[i*4+4]&0xff;
+            pulse_width |= ((uint16_t)(data[i*4+5]&0xff))<<8;
 
-        uint16_t pulse_width = data[i*4+4]&0xff;
-        pulse_width |= ((uint16_t)(data[i*4+5]&0xff))<<8;
+            frame_data.distance[i] = distance/1000.0;
+            frame_data.pulse_width[i] = pulse_width;
+            frame_data.angle[i] = i*180.0/(frame_data_size-1)*3.141592/180.0;
+        }
 
-        frame_data.distance[i] = distance/1000.0;
-        frame_data.pulse_width[i] = pulse_width;
-        frame_data.angle[i] = i*180.0/(frame_data_size-1)*3.141592/180.0;
+        frame_data_in = frame_data;
+        lidar_data.clear();
     }
 }
 
-void ParsingData(std::vector<uint8_t>& recv_data, int PI, int PL, int SM, int CAT0, int CAT1)
+void SerialNum(const std::vector<uint8_t>& recv_data, uint8_t PI, uint8_t PL, uint8_t SM)
 {
-    // GetSerialNum()
-    if(SM==SM_GET && CAT0==0x02 && CAT1==0x0A)
+    if(SM!=SM_GET || recv_data.size()==0) return;
+
+    serial_num = recv_data;
+}
+
+void ParsingData(const std::vector<uint8_t>& recv_data, uint8_t PI, uint8_t PL, uint8_t SM, uint8_t BI, uint8_t CAT0, uint8_t CAT1)
+{
+    // std::cout << std::endl;
+    // std::cout << "Recv Data" << std::endl;
+    // std::cout << "PI = " << (int)PI << std::endl;
+    // std::cout << "PL = " << (int)PL << std::endl;
+    // std::cout << "SM = " << (int)SM << std::endl;
+    // std::cout << "BI = " << (int)BI << std::endl;
+    // std::cout << "CAT0 = " << (int)CAT0 << std::endl;
+    // std::cout << "CAT1 = " << (int)CAT1 << std::endl;
+    // std::cout << "DTL = " << recv_data.size() << std::endl;
+
+    if(BI!=BI_GL2PC) return;
+
+    if(CAT0==0x01 && CAT1==0x02) FrameData(recv_data, PI, PL, SM);
+    else if(CAT0==0x02 && CAT1==0x0A) SerialNum(recv_data, PI, PL, SM);
+}
+
+void ParsingPayload(const std::vector<uint8_t>& recv_packet)
+{
+    std::vector<uint8_t> recv_data;
+
+    uint16_t TL = recv_packet[0]&0xff;
+    TL |= ((uint16_t)recv_packet[1])<<8;
+
+    uint8_t PI = recv_packet[2]&0xff;
+    uint8_t PL = recv_packet[3]&0xff;
+    uint8_t SM = recv_packet[4]&0xff;
+    uint8_t BI = recv_packet[5]&0xff;
+    uint8_t CAT0 = recv_packet[6]&0xff;
+    uint8_t CAT1 = recv_packet[7]&0xff;
+
+    uint16_t DTL = TL - 14;
+
+    recv_data.resize(DTL);
+    for(int i=0; i<DTL; i++)
     {
-        serial_num = recv_data;
+        recv_data[i] = recv_packet[8+i];
     }
-    // ReadFrameData()
-    else if(SM==SM_STREAM && CAT0==0x01 && CAT1==0x02)
+
+    ParsingData(recv_data, PI, PL, SM, BI, CAT0, CAT1);
+}
+
+void CheckPS(uint8_t data)
+{
+    if(recv_state==STATE_INIT && data==PS1)
     {
-        if(PI==0)
+        RecvPacketClear();
+        read_cs_update(data);
+        recv_state = STATE_PS1;
+        return;
+    }
+    else if(recv_state==STATE_PS1 && data==PS2)
+    {
+        read_cs_update(data);
+        recv_state = STATE_PS2;
+        return;
+    }
+    else if(recv_state==STATE_PS2 && data==PS3)
+    {
+        read_cs_update(data);
+        recv_state = STATE_PS3;
+        return;
+    }
+    else if(recv_state==STATE_PS3 && data==PS4)
+    {
+        read_cs_update(data);
+        recv_state = STATE_PS4;
+        return;
+    }
+
+    recv_state = STATE_INIT;
+}
+
+void AddPacketElement(uint8_t data)
+{
+    if(recv_state==STATE_INIT || recv_state==STATE_PS1 || recv_state==STATE_PS2 || recv_state==STATE_PS3)
+    {
+        CheckPS(data);
+    }
+    else if(recv_state==STATE_PS4)
+    {
+        recv_state = STATE_TL;
+        recv_packet.push_back(data);
+        read_cs_update(data);
+    }
+    else if(recv_state==STATE_TL)
+    {
+        recv_state = STATE_PAYLOAD;
+        recv_packet.push_back(data);
+        read_cs_update(data);
+    }
+    else if(recv_state==STATE_PAYLOAD)
+    {
+        if(recv_packet.size()>=8)
         {
-            lidar_data = recv_data;
+            uint16_t recv_TL;
+            recv_TL = recv_packet[0]&0xff;
+            recv_TL |= ((uint16_t)recv_packet[1])<<8;
+
+            if(recv_packet.size()==(recv_TL-6))
+            {
+                if(data==PE)
+                {
+                    recv_state = STATE_CS;
+                    read_cs_update(data);
+                }
+                else recv_state = STATE_INIT;
+            } 
+            else
+            {
+                recv_packet.push_back(data);
+                read_cs_update(data);
+            }
         }
         else
         {
-            std::copy(recv_data.begin(), recv_data.end(), std::back_inserter(lidar_data));
-        }
-
-        if(PI==(PL-1))
-        {
-            Gl::framedata_t frame_data;
-            ParsingFrameData(frame_data, lidar_data);
-            frame_data_in = frame_data;
-            lidar_data.clear();
-        }
-    }
-
-}
-
-
-void add_packet_element(uint8_t data)
-{
-    static int recv_PI = 0;
-    static int recv_PL = 0;
-    static int recv_SM = 0;
-    static int recv_CAT0 = 0;
-    static int recv_CAT1 = 0;
-    static int recv_DTL = 0;
-
-    int PS_result = check_PS(data);
-    if(PS_result==0)
-    {
-        recv_packet_clear();
-        if(data==PS1) recv_state = STATE_PS1;
-    }
-    else if(PS_result==2)
-    { 
-        if(recv_state==STATE_PS4)
-        {
             recv_packet.push_back(data);
             read_cs_update(data);
-
-            if(recv_packet.size()==6 and recv_packet[5]!=BI_GL3102PC)
-            {
-                std::vector<uint8_t> packet = recv_packet;
-                recv_packet_clear();
-                for(auto& v: packet) add_packet_element(v);
-            }
-
-            if(recv_packet.size()==8)
-            {
-                int TL = recv_packet[0]&0xff;
-                TL = TL | ((recv_packet[1]&0xff)<<8);
-
-                recv_PI = recv_packet[2]&0xff;
-                recv_PL = recv_packet[3]&0xff;
-
-                recv_SM = recv_packet[4]&0xff;
-                recv_CAT0 = recv_packet[6]&0xff;
-                recv_CAT1 = recv_packet[7]&0xff;
-                    
-                recv_DTL = TL - 14;
-            }
-
-            if(recv_packet.size()>8)
-            {
-                if(recv_DTL>recv_data.size()) recv_data.push_back(data);
-                else recv_state = STATE_preDATA;
-            }
-
-            if(recv_state==STATE_preDATA)
-            {
-                if(data==PE) recv_state = STATE_PE;
-                else
-                {
-                    std::vector<uint8_t> packet = recv_packet;
-                    recv_packet_clear();
-                    for(auto& v: packet) add_packet_element(v);
-                }
-            }
         }
-        else if(recv_state==STATE_PE)
-        {
-            if(data==read_cs_get())
-            {
-                ParsingData(recv_data, recv_PI, recv_PL, recv_SM, recv_CAT0, recv_CAT1);
-                recv_packet_clear();
-            }
-            else
-            {
-                std::vector<uint8_t> packet = recv_packet;
-                recv_packet_clear();
-                for(auto& v: packet) add_packet_element(v);
-            }
-        }
+    }
+    else if(recv_state==STATE_CS)
+    {
+        if(data==read_cs_get()) ParsingPayload(recv_packet);
+        
+        recv_state = STATE_INIT;
+    }
+
+    if(recv_state==STATE_INIT) 
+    {
+        std::vector<uint8_t> packet = recv_packet;
+        RecvPacketClear();
+        for(auto& v: packet) AddPacketElement(v);
     }
 }
 
 
 void Gl::ThreadCallBack(void) 
 {
-    recv_packet_clear();
-    std::vector<uint8_t> recv(2000);
+    RecvPacketClear();
 
     while(thread_running==true)
     {
         if(comm_type==COMM_SERIAL)
         {
             uint8_t data;
-            while( serial_port_->read(&data,1)==1 ) add_packet_element(data);
+            while( thread_running==true && serial_port->read(&data,1)==1 ) AddPacketElement(data);
         }
         else if(comm_type==COMM_UDP)
         {
-            socklen_t len = sizeof(clientaddr_);
-            int recv_len = recvfrom(sockfd_, &recv[0], recv.size(), MSG_WAITFORONE, (struct sockaddr *) &clientaddr_, &len);
+            std::vector<uint8_t> recv_packet(2000);
+            int recv_len = recv(sockfd, &recv_packet[0], recv_packet.size(), MSG_WAITFORONE);
 
-            for(int i=0; i<recv_len; i++)
-            {
-                add_packet_element(recv[i]);
-            }
+            for(int i=0; i<recv_len; i++) AddPacketElement(recv_packet[i]);
         }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
@@ -446,7 +427,7 @@ std::string Gl::GetSerialNum(void)
     serial_num.clear();
     for(size_t i=0; i<50; i++)
     {
-        write_packet(PI, PL, SM, CAT0, CAT1, DTn);
+        WritePacket(PI, PL, SM, CAT0, CAT1, DTn);
         
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -488,7 +469,7 @@ void Gl::ReadFrameData(Gl::framedata_t& frame_data, bool filter_on)
 // Set GL Conditions
 //////////////////////////////////////////////////////////////
 
-void Gl::SetFrameDataEnable(uint8_t framedata_enable)
+void Gl::SetFrameDataEnable(bool framedata_enable)
 {
     uint8_t PI = 0;
     uint8_t PL = 1;
@@ -497,5 +478,5 @@ void Gl::SetFrameDataEnable(uint8_t framedata_enable)
     uint8_t CAT1 = 0x3;
     std::vector<uint8_t> DTn = {framedata_enable};
 
-    write_packet(PI, PL, SM, CAT0, CAT1, DTn);
+    WritePacket(PI, PL, SM, CAT0, CAT1, DTn);
 }

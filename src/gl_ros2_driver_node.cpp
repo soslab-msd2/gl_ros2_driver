@@ -25,26 +25,27 @@ class GlRos2DriverNode : public rclcpp::Node
         ~GlRos2DriverNode()
         {
             gl->SetFrameDataEnable(false);
+            delete gl;
         }
 
 
     private:
         /************************** Functions *****************************/
-        void TimerCallback(void);
         void DeclareParam(void);
         void GetParam(void);
 
         void InitGl(void);
         void PubLidar(const Gl::framedata_t& frame_data);
 
+        void TimerCallback(void);
 
     private:
         /************************** Launch variables *****************************/
-        std::string serial_port_name = "/dev/ttyUSB0";
-        int serial_baudrate = 921600;
-        std::string frame_id = "laser";
-        std::string pub_topicname_lidar = "scan";
-        double angle_offset = 0.0;
+        std::string serial_port_name;
+        int serial_baudrate;
+        std::string frame_id;
+        std::string pub_topicname_lidar;
+        double angle_offset;
         
 
     private:
@@ -54,13 +55,6 @@ class GlRos2DriverNode : public rclcpp::Node
         rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr laser_pub;
         rclcpp::TimerBase::SharedPtr timer;
 };
-
-void GlRos2DriverNode::TimerCallback(void)
-{
-    Gl::framedata_t frame_data;
-    gl->ReadFrameData(frame_data);
-    if(frame_data.distance.size()>0) PubLidar(frame_data);
-}
 
 void GlRos2DriverNode::DeclareParam(void)
 {
@@ -111,6 +105,13 @@ void GlRos2DriverNode::PubLidar(const Gl::framedata_t& frame_data)
         }
         laser_pub->publish(scan_msg);
     }
+}
+
+void GlRos2DriverNode::TimerCallback(void)
+{
+    Gl::framedata_t frame_data;
+    gl->ReadFrameData(frame_data);
+    if(frame_data.distance.size()>0) PubLidar(frame_data);
 }
 
 int main(int argc, char * argv[])

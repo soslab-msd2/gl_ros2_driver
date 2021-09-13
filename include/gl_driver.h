@@ -32,13 +32,13 @@ public:
 	};
 
 public:
-	Gl(std::string& gl_ip, int gl_port, int pc_port);
+	Gl(std::string& gl_udp_ip, int gl_udp_port, int pc_udp_port);
 	Gl(std::string& gl_serial_name, uint32_t gl_serial_baudrate);
 	~Gl();
 
 	std::string GetSerialNum(void);
 	void ReadFrameData(Gl::framedata_t& frame_data, bool filter_on=true);
-	void SetFrameDataEnable(uint8_t framedata_enable);
+	void SetFrameDataEnable(bool framedata_enable);
 
 private:
 	void ThreadCallBack(void);
