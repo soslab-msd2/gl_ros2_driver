@@ -4,7 +4,7 @@
 * Installation
 ```
 $ cd ${ROS2 workspace}/src
-$ git clone https://github.com/soslab-project/gl_ros2_driver.git
+$ git clone --recurse-submodules https://github.com/soslab-project/gl_ros2_driver.git
 $ cd $(ROS2 workspace)
 $ colcon build --symlink-install
 ```

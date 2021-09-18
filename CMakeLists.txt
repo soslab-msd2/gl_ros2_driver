@@ -21,6 +21,10 @@ if (NOT TARGET serial)
 file(GLOB serial_src "include/gl_driver_libraries/serial/*.cc")
 add_library(serial SHARED ${serial_src})
 endif()
+if (NOT TARGET udp)
+file(GLOB udp_src "include/gl_driver_libraries/udp/*.cpp")
+add_library(udp SHARED ${udp_src})
+endif()
 if (NOT TARGET gl_driver)
 add_library(gl_driver SHARED include/gl_driver_libraries/gl_driver.cpp)
 endif()
@@ -29,6 +33,7 @@ add_executable(${PROJECT_NAME}_node ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROJECT_NA
 target_link_libraries(${PROJECT_NAME}_node
     gl_driver
     serial
+    udp
 )
 ament_target_dependencies(${PROJECT_NAME}_node 
     rclcpp
