@@ -14,14 +14,15 @@ find_package(sensor_msgs REQUIRED)
 
 include_directories(
     include
+    include/gl_driver_libraries
 )
 
-file(GLOB serial_src "include/serial/*.cc")
 if (NOT TARGET serial)
+file(GLOB serial_src "include/gl_driver_libraries/serial/*.cc")
 add_library(serial SHARED ${serial_src})
 endif()
 if (NOT TARGET gl_driver)
-add_library(gl_driver SHARED include/gl_driver.cpp)
+add_library(gl_driver SHARED include/gl_driver_libraries/gl_driver.cpp)
 endif()
 
 add_executable(${PROJECT_NAME}_node ${CMAKE_CURRENT_SOURCE_DIR}/src/${PROJECT_NAME}_node.cpp)
