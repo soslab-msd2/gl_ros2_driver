@@ -90,8 +90,8 @@ void GLRos2DriverNode::PubLidar(const SOSLAB::GL::framedata_t& frame_data)
         sensor_msgs::msg::LaserScan scan_msg;
         scan_msg.header.stamp = rclcpp::Clock().now();
         scan_msg.header.frame_id = frame_id;
-        scan_msg.angle_min = frame_data.angle[0] + angle_offset;
-        scan_msg.angle_max = frame_data.angle[num_lidar_data-1] + angle_offset;
+        scan_msg.angle_min = frame_data.angle[0] + angle_offset*3.141592/180.0;
+        scan_msg.angle_max = frame_data.angle[num_lidar_data-1] + angle_offset*3.141592/180.0;
         scan_msg.angle_increment = (scan_msg.angle_max - scan_msg.angle_min) / (double)(num_lidar_data-1);
         scan_msg.range_min = 0.001;
         scan_msg.range_max = 30.0;
